@@ -5,6 +5,7 @@ module directly, e.g.
 
     from backtesting import Backtest, Strategy
 """
+import logging
 import multiprocessing as mp
 import os
 import sys
@@ -32,9 +33,11 @@ except ImportError:
         return seq
 
 
-from ._plotting import plot  # noqa: I001
-from ._stats import compute_stats
-from ._util import _as_str, _Data, _Indicator, try_
+from ._plotting import plot  # noqa: I001, E402
+from ._stats import compute_stats  # noqa: E402
+from ._util import _as_str, _Data, _Indicator, try_  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 __pdoc__ = {
     "Strategy.__init__": False,
@@ -965,6 +968,7 @@ class _Broker:
             # If we don't have enough liquidity to cover for the order, cancel it
             if abs(need_size) * adjusted_price > self.margin_available * self._leverage:
                 self.orders.remove(order)
+                logger.info(f"Not enough money to complete order: need_size={need_size}, adjusted_price={adjusted_price}, margin_available={self.margin_available}, abs(need_size) * adjusted_price={abs(need_size) * adjusted_price}, self.margin_available * self._leverage={self.margin_available * self._leverage}, leverage={self._leverage}")
                 continue
 
             # Open a new trade
@@ -1091,7 +1095,7 @@ class Backtest:
 
         `margin` is the required margin (ratio) of a leveraged account.
         No difference is made between initial and maintenance margins.
-        To run the backtest using e.g. 50:1 leverge that your broker allows,
+        To run the backtest using e.g. 50:1 leverage that your broker allows,
         set margin to `0.02` (1 / leverage).
 
         If `trade_on_close` is `True`, market orders will be filled
@@ -1256,7 +1260,8 @@ class Backtest:
                 try:
                     broker.next()
                 except _OutOfMoneyError:
-                    break
+                    pass  # to make it possible to implement deposits
+                    # break
 
                 # Next tick, a moment before bar close
                 strategy.next()
