@@ -858,14 +858,22 @@ class _Broker:
                 sum_pl += pl
                 # if self.logging_flag == 1:
                 logger.info(
-                    f"CLOSEOUT time={self._data.index[-1]} eq_leveraged={eq_leveraged:.0f} cash_before={cash_before:.0f} cash_after={self._cash:.0f} margin_pct={margin_pct:0.2f} used_margin={used_margin:.0f} margin_available={self.margin_available:.0f} equity={self.equity:.0f} pos={self.position} pl={pl:0.2f} pl_pct={pl_pct:0.2f} leverage={self._leverage:.0f}"
-                    # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)} position_size={position_size} sl_price={lower} tp_price={upper}"
+                    f"CLOSEOUT time={self._data.index[-1]} eq_leveraged={eq_leveraged:.0f} "
+                    f"cash_before={cash_before:.0f} cash_after={self._cash:.0f} margin_pct={margin_pct:0.2f} "
+                    f"used_margin={used_margin:.0f} margin_available={self.margin_available:.0f} "
+                    f"equity={self.equity:.0f} pos={self.position} pl={pl:0.2f} pl_pct={pl_pct:0.2f} "
+                    f"leverage={self._leverage:.0f}"
+                    # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)}
+                    # position_size={position_size} sl_price={lower} tp_price={upper}"
                 )
                 n_trades -= 1
             else:
                 # logger.info(
-                #     f"OK time={self.data.index[-1]} eq_leveraged={eq_leveraged} cash={self._broker._cash} margin_pct={margin_pct} used_margin={used_margin} margin_available={self._broker.margin_available} equity={self.equity} pos={self.position} price={price}"
-                #     # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)} position_size={position_size} sl_price={lower} tp_price={upper}"
+                #     f"OK time={self.data.index[-1]} eq_leveraged={eq_leveraged} cash={self._broker._cash}
+                # margin_pct={margin_pct} used_margin={used_margin} margin_available={self._broker.margin_available}
+                # equity={self.equity} pos={self.position} price={price}"
+                #     # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)}
+                # position_size={position_size} sl_price={lower} tp_price={upper}"
                 # )
                 break  # keep closing trades until margin_pct becomes >= 50%
 
@@ -997,7 +1005,13 @@ class _Broker:
             # If we don't have enough liquidity to cover for the order, cancel it
             if abs(need_size) * adjusted_price > self.margin_available * self._leverage:
                 self.orders.remove(order)
-                logger.info(f"Not enough money to complete order: need_size={need_size}, adjusted_price={adjusted_price}, margin_available={self.margin_available}, abs(need_size) * adjusted_price={abs(need_size) * adjusted_price}, self.margin_available * self._leverage={self.margin_available * self._leverage}, leverage={self._leverage}")
+                logger.info(
+                    f"Not enough money to complete order: need_size={need_size}, adjusted_price={adjusted_price}, "
+                    f"margin_available={self.margin_available}, "
+                    f"abs(need_size) * adjusted_price={abs(need_size) * adjusted_price}, "
+                    f"self.margin_available * self._leverage={self.margin_available * self._leverage}, "
+                    f"leverage={self._leverage}"
+                )
                 continue
 
             # Open a new trade
