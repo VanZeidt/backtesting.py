@@ -841,8 +841,37 @@ class _Broker:
         margin_used = sum(trade.value / self._leverage for trade in self.trades)
         return max(0, self.equity - margin_used)
 
+    def _process_closeout(self):
+        n_trades = len(self.trades)
+        sum_pl = 0
+        while n_trades > 0:
+            # self.margin_available * self._leverage
+            used_margin = sum(trade.value for trade in self.trades) / self._leverage
+            # sum([tr.entry_price * tr.size for tr in self.trades[:n_trades]]) / self._broker._leverage
+            eq_leveraged = self._cash + sum(trade.pl for trade in self.trades)
+            margin_pct = eq_leveraged / used_margin * 100 if used_margin > 0 else 100
+            if margin_pct < 50:  # Close last trade
+                pl = self.trades[n_trades - 1].pl
+                pl_pct = self.trades[n_trades - 1].pl_pct
+                cash_before = self._cash
+                self.trades[n_trades - 1].close()
+                sum_pl += pl
+                # if self.logging_flag == 1:
+                logger.info(
+                    f"CLOSEOUT time={self._data.index[-1]} eq_leveraged={eq_leveraged:.0f} cash_before={cash_before:.0f} cash_after={self._cash:.0f} margin_pct={margin_pct:0.2f} used_margin={used_margin:.0f} margin_available={self.margin_available:.0f} equity={self.equity:.0f} pos={self.position} pl={pl:0.2f} pl_pct={pl_pct:0.2f} leverage={self._leverage:.0f}"
+                    # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)} position_size={position_size} sl_price={lower} tp_price={upper}"
+                )
+                n_trades -= 1
+            else:
+                # logger.info(
+                #     f"OK time={self.data.index[-1]} eq_leveraged={eq_leveraged} cash={self._broker._cash} margin_pct={margin_pct} used_margin={used_margin} margin_available={self._broker.margin_available} equity={self.equity} pos={self.position} price={price}"
+                #     # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)} position_size={position_size} sl_price={lower} tp_price={upper}"
+                # )
+                break  # keep closing trades until margin_pct becomes >= 50%
+
     def next(self):
         i = self._i = len(self._data) - 1
+        self._process_closeout()
         self._process_orders()
 
         # Log account equity for the equity curve
