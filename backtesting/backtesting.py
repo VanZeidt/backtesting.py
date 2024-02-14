@@ -585,7 +585,7 @@ class Trade:
     def __repr__(self):
         return (
             f'<Trade size={self.__size} time={self.__entry_bar}-{self.__exit_bar or ""} '
-            f'price={self.__entry_price}-{self.__exit_price or ""} pl={self.pl:.0f}'
+            f'price={self.__entry_price}-{self.__exit_price or ""} pl={self.pl:.0f} pl_pct={self.pl_pct*100:0.2f}'
             f'{" tag="+str(self.__tag) if self.__tag is not None else ""}>'
         )
 
@@ -846,27 +846,53 @@ class _Broker:
         sum_pl = 0
         while n_trades > 0:
             # self.margin_available * self._leverage
-            used_margin = sum(trade.value for trade in self.trades) / self._leverage
-            # sum([tr.entry_price * tr.size for tr in self.trades[:n_trades]]) / self._broker._leverage
-            eq_leveraged = self._cash + sum(trade.pl for trade in self.trades)
+            # used_margin = sum(trade.value for trade in self.trades) / self._leverage
+            used_margin = sum([tr.entry_price * tr.size for tr in self.trades[:n_trades]]) / self._leverage
+            # eq_leveraged = self._cash + sum(trade.pl for trade in self.trades) # if last_price is used
+            price_low = self._data.Low[-1] # use lowest price instead to be conservative
+            eq_leveraged = self._cash + sum(trade.size * (price_low - trade.entry_price) for trade in self.trades)
             margin_pct = eq_leveraged / used_margin * 100 if used_margin > 0 else 100
             if margin_pct < 50:  # Close last trade
-                pl = self.trades[n_trades - 1].pl
-                pl_pct = self.trades[n_trades - 1].pl_pct
+                try:
+                    pl = self.trades[n_trades - 1].pl
+                except IndexError:
+                    print(self.trades)
+                    print(f"n_trades={n_trades}")
+                    raise
+                pl_pct = self.trades[n_trades - 1].pl_pct * 100
                 cash_before = self._cash
                 self.trades[n_trades - 1].close()
+                self._process_orders()
+                # 50 > eq_leveraged / used_margin * 100
+                # 0.5 > eq_leveraged / used_margin
+                # 0.5 > (self._cash + sum(trade.pl for trade in self.trades)) / used_margin
+                # 0.5 > (self._cash + sum(trade.pl for trade in self.trades)) / ( sum([tr.entry_price * tr.size for tr in self.trades]) / self._leverage )  # noqa: E501
+                # 0.5 * ( sum([tr.entry_price * tr.size for tr in self.trades]) / self._leverage ) > self._cash + sum(trade.pl for trade in self.trades)  # noqa: E501
+                # if len(self.trades) > 0:
+                #     used_margin_after = sum([tr.entry_price * tr.size for tr in self.trades]) / self._leverage
+                #     proposed_cash = 0.5 * used_margin_after - sum(trade.pl for trade in self.trades)
+                # else:
+                #     proposed_cash = eq_leveraged
+                # self._cash = max(0, proposed_cash)
+                self._cash = max(0, eq_leveraged)
+                # self.trades = self.trades[:n_trades-1] # close the last trade immediately
+                # set cash so that margin_pct would have been 50%
                 sum_pl += pl
-                # if self.logging_flag == 1:
-                logger.info(
-                    f"CLOSEOUT time={self._data.index[-1]} eq_leveraged={eq_leveraged:.0f} "
-                    f"cash_before={cash_before:.0f} cash_after={self._cash:.0f} margin_pct={margin_pct:0.2f} "
-                    f"used_margin={used_margin:.0f} margin_available={self.margin_available:.0f} "
-                    f"equity={self.equity:.0f} pos={self.position} pl={pl:0.2f} pl_pct={pl_pct:0.2f} "
-                    f"leverage={self._leverage:.0f}"
-                    # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)}
-                    # position_size={position_size} sl_price={lower} tp_price={upper}"
-                )
-                n_trades -= 1
+                if self.logging_flag & (self.logging_flag == 1):
+                    logger.info(
+                        f"CLOSEOUT time={self._data.index[-1]} eq_leveraged={eq_leveraged:.0f} "
+                        f"cash_before={cash_before:.0f} cash_after={self._cash:.0f} "
+                        # f"proposed_cash={proposed_cash:.0f} "
+                        f"margin_pct={margin_pct:0.2f} "
+                        f"used_margin={used_margin:.0f} margin_available={self.margin_available:.0f} "
+                        f"equity={self.equity:.0f} pos={self.position} trades={self.trades} "
+                        f"orders={self.orders} "
+                        f"pl={pl:0.2f} pl_pct={pl_pct:0.2f} "
+                        f"leverage={self._leverage:.0f}"
+                        # f"BUY price={price} adjusted_price={self._adjusted_price(size=position_size, price=price)}
+                        # position_size={position_size} sl_price={lower} tp_price={upper}"
+                    )
+                n_trades = len(self.trades)
             else:
                 # logger.info(
                 #     f"OK time={self.data.index[-1]} eq_leveraged={eq_leveraged} cash={self._broker._cash}
@@ -887,13 +913,13 @@ class _Broker:
         self._equity[i] = equity
 
         # If equity is negative, set all to 0 and stop the simulation
-        if equity <= 0:
-            assert self.margin_available <= 0
-            for trade in self.trades:
-                self._close_trade(trade, self._data.Close[-1], i)
-            self._cash = 0
-            self._equity[i:] = 0
-            raise _OutOfMoneyError
+        # if equity <= 0:
+        #     assert self.margin_available <= 0
+        #     for trade in self.trades:
+        #         self._close_trade(trade, self._data.Close[-1], i)
+        #     self._cash = 0
+        #     self._equity[i:] = 0
+        #     raise _OutOfMoneyError
 
     def _process_orders(self):
         data = self._data
@@ -1005,13 +1031,14 @@ class _Broker:
             # If we don't have enough liquidity to cover for the order, cancel it
             if abs(need_size) * adjusted_price > self.margin_available * self._leverage:
                 self.orders.remove(order)
-                logger.info(
-                    f"Not enough money to complete order: need_size={need_size}, adjusted_price={adjusted_price}, "
-                    f"margin_available={self.margin_available}, "
-                    f"abs(need_size) * adjusted_price={abs(need_size) * adjusted_price}, "
-                    f"self.margin_available * self._leverage={self.margin_available * self._leverage}, "
-                    f"leverage={self._leverage}"
-                )
+                if self.logging_flag & (self.logging_flag == 1):
+                    logger.info(
+                        f"Not enough money to complete order: need_size={need_size}, adjusted_price={adjusted_price}, "
+                        f"margin_available={self.margin_available}, "
+                        f"abs(need_size) * adjusted_price={abs(need_size) * adjusted_price}, "
+                        f"self.margin_available * self._leverage={self.margin_available * self._leverage}, "
+                        f"leverage={self._leverage}"
+                    )
                 continue
 
             # Open a new trade
