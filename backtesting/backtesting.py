@@ -878,7 +878,7 @@ class _Broker:
                 # self.trades = self.trades[:n_trades-1] # close the last trade immediately
                 # set cash so that margin_pct would have been 50%
                 sum_pl += pl
-                if self.logging_flag & (self.logging_flag == 1):
+                if self.logging_flag & (self.logging_flag > 0):
                     logger.info(
                         f"CLOSEOUT time={self._data.index[-1]} eq_leveraged={eq_leveraged:.0f} "
                         f"cash_before={cash_before:.0f} cash_after={self._cash:.0f} "
@@ -1031,7 +1031,7 @@ class _Broker:
             # If we don't have enough liquidity to cover for the order, cancel it
             if abs(need_size) * adjusted_price > self.margin_available * self._leverage:
                 self.orders.remove(order)
-                if self.logging_flag & (self.logging_flag == 1):
+                if self.logging_flag & (self.logging_flag > 0):
                     logger.info(
                         f"Not enough money to complete order: need_size={need_size}, adjusted_price={adjusted_price}, "
                         f"margin_available={self.margin_available}, "
